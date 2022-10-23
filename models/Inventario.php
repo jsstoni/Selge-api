@@ -285,4 +285,24 @@ class Inventario extends Model
         }
         return self::Insert('subs', array('producto_id' => $id, 'usuario' => $this->token));
     }
+
+    public function reportes()
+    {
+        $fecha = date("Y");
+        $q = "SELECT TMeses.Mes,T1.total_mes FROM
+        (SELECT 1 as IdMes , 'Enero'    as Mes UNION
+        SELECT 2 as IdMes , 'Febrero'  as Mes UNION
+        SELECT 3 as IdMes , 'Marzo'  as Mes UNION
+        SELECT 4 as IdMes , 'Abril'  as Mes UNION
+        SELECT 5 as IdMes , 'Mayo'    as Mes UNION
+        SELECT 6 as IdMes , 'Junio'  as Mes UNION
+        SELECT 7 as IdMes , 'Julio'  as Mes UNION
+        SELECT 8 as IdMes , 'Agosto'    as Mes UNION
+        SELECT 9 as IdMes , 'Septiembre' as Mes UNION
+        SELECT 10 as IdMes, 'Octubre'    as Mes UNION
+        SELECT 11 as IdMes, 'Noviembre'  as Mes UNION
+        SELECT 12 as IdMes, 'Diciembre'  as Mes) TMeses
+        LEFT JOIN (SELECT MONTH(fecha) Mes, SUM(cantidad) total_mes FROM pedidos WHERE YEAR(fecha) = '{$fecha}' AND proveedor = '{$this->token}' GROUP BY Mes) T1 ON T1.Mes = TMeses.idMes";
+        return self::getResult($q);
+    }
 }

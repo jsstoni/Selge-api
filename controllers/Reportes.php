@@ -17,7 +17,10 @@ class Reportes extends Controller
     {
         $inventario = $this->getModel('Inventario');
         $retiros = $inventario->listaRetiros();
-        echo json_encode(array('resultado' => array('retiros' => $retiros)));
+        $reportes = array_map(function($n) {
+            return $n['total_mes'] == '' ? 0 : $n['total_mes'];
+        }, $inventario->reportes());
+        echo json_encode(array('resultado' => array('retiros' => $retiros, 'data' => $reportes)));
     }
 
     public function pdfRetiros()
