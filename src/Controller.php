@@ -56,7 +56,7 @@ abstract class Controller
                     $extension = ".jpeg";
                     break;
             }
-            $fileName = Helper::getRandomString(12).$extension;
+            $fileName = Helper::getRandomString(16).$extension;
             $file = ROOT . 'assets' . DS . 'upload' . DS . $fileName;
             if (file_put_contents($file, file_get_contents($img))) {
                 return $fileName;

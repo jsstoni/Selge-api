@@ -15,6 +15,8 @@ class Inventario extends Controller
 	public function index($request)
 	{
 		$inventario = $this->getModel('Inventario');
+		$colecciones = $this->getModel('Colecciones');
+		$categorias = $colecciones->lista();
 		$req = $request->getAllParams();
 		$page = $req->page ?? 1;
 
@@ -26,7 +28,7 @@ class Inventario extends Controller
 		if (sizeof($lista) < 1) {
 			$this->json_error('No se encontraron productos');
 		} else {
-			$this->json_response(array('lista' => $lista, 'numeroDePaginas' => $resultado['pages']));
+			$this->json_response(array('categorias' => $categorias, 'lista' => $lista, 'numeroDePaginas' => $resultado['pages']));
 		}
 	}
 
@@ -44,83 +46,6 @@ class Inventario extends Controller
 		}
 	}
 
-	public function buscarSku($request)
-	{
-		$req = $request->getAllParams();
-		$id = $req->id;
-		if (strtolower($id) == 'p.e') {
-			echo json_encode(array("resultado" => array('lista' => array('sku' => 'P.E', 'producto' => 'P.E - ', 'image' => View::newMedia('image', 'default.jpg'), 'precio' => 0, 'precioreal' => 0, 'descuento' => 0, 'opciones' => '', 'options' => '[]', 'cantidad' => 1, 'producir' => 1, 'atributos' => '[]', 'nota' => ''))));
-		} else {
-			$inventario = $this->getModel('Inventario');
-			$inventario->setData(array('id' => $id));
-			$lista = Helper::rowImage($inventario->buscarSku());
-			if (sizeof($lista) > 0) {
-				echo json_encode(array('resultado' => array("lista" => $lista[0])));
-			} else {
-				echo json_encode(array("resultado" => array('error' => 'No se encontro el producto')));
-			}
-		}
-	}
-
-	public function ImportarProductos($request)
-	{
-		Helper::newResource('nuovo/spreadsheet-reader/php-excel-reader/excel_reader2.php');
-		Helper::newResource('nuovo/spreadsheet-reader/SpreadsheetReader.php');
-		$allowedFileType = ['application/vnd.ms-excel','text/xls','text/xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/octet-stream', 'text/csv'];
-		if (isset($_FILES['archivo']['type'])) {
-			if (in_array($_FILES["archivo"]["type"], $allowedFileType)) {
-				$path = ROOT . 'assets' . DS . 'CSV';
-				$targetPath = $path.'/'.$_FILES['archivo']['name'];
-				move_uploaded_file($_FILES['archivo']['tmp_name'], $targetPath);
-				@$reader = new \SpreadsheetReader($targetPath);
-				$req = $request->getAllParams();
-				$col_sku = $req->sku;
-				$col_producto = $req->producto;
-				$col_precio = $req->precio;
-				$col_categoria = $req->categoria;
-				$col_image = $req->image;
-				$fila = $req->fila ?? 0;
-
-				if ((!empty($col_sku)) && (!empty($col_producto)) && (!empty($col_precio)) && (!empty($col_categoria)) && (!empty($col_image))) {
-					$resultado = array();
-					foreach ($reader as $key => $row) {
-						if ($key == 0) {
-							if ($fila == "true") {
-								continue;
-							}
-						}
-						$sku = $row[$col_sku - 1] ?? Helper::getRandomString(8);
-						$producto = $row[$col_producto - 1] ?? '';
-						$categoria = $row[$col_categoria - 1] ?? 'Sin Categoría';
-						$precio = $row[$col_precio - 1] ?? 0;
-						$image = $row[$col_image - 1] ?? '';
-						$resultado[] = array('usuario' => 1,'sku' => $sku, 'image' => $image, 'producto' => $producto, 'categoria' => $categoria, 'precio' => $precio, 'atributos' => '[]', 'activo' => 1, 'fecha' => date("Y-m-d"));
-					}
-					$categorias = array_map(function ($e) {
-						return ['nombre' => $e['categoria'], 'usuario' => $e['usuario']];
-					}, $resultado);
-					$dataCategoria = array_unique($categorias, SORT_REGULAR);
-					$inventario = $this->getModel('Inventario');
-					if ($inventario->agregarCategoria($dataCategoria)) {
-						if ($inventario->importarProductos($resultado)) {
-							echo json_encode(array('success' => "Productos importados"));
-						} else {
-							echo json_encode(array('error' => "Error al subir productos"));
-						}
-					} else {
-						echo json_encode(array('error' => 'Error para generar las categorías'));
-					}
-				} else {
-					echo json_encode(array("error" => "Complete el orden de las columnas"));
-				}
-			} else {
-				echo json_encode(array('error' => "Tipo de archivo no permitido"));
-			}
-		} else {
-			echo json_encode(array('error' => 'Seleccione archivo a subir'));
-		}
-	}
-
 	public function nuevoProducto($request)
 	{
 		$data = $request->getInputs();
@@ -129,21 +54,20 @@ class Inventario extends Controller
 		$producto = $data['producto'] ?? null;
 		$atributos = json_encode($data['atributos']) ?? '[]';
 		$opciones = json_encode($data['opciones']) ?? '[]';
-		$categoria = $data['categoria'] ?? null;
-		$precio = $data['precio'] ?? null;
-		$descuento = $data['descuento'] ?? null;
+		$categoria = $data['categoria'] ?? '';
+		$precio = $data['precio'] ?? 0;
+		$valor = $data['valor'] ?? 0;
 		$stock = $data['stock'] ?? 'false';
 		$web = $data['web'] ?? 'false';
 
 		$post = (isset($sku) && !empty($sku)) &&
 				(isset($producto) && !empty($producto)) &&
-				(isset($precio) && !empty($precio)) &&
-				(isset($categoria) && !empty($categoria));
+				(isset($precio) && !empty($precio));
 		if ($post) {
 			if (sizeof($data['opciones']) > 0) {
 				$inventario = $this->getModel('Inventario');
 				$dbImage = $this->fileFormat($image);
-				$data = array('sku' => $sku, 'producto' => $producto, 'image' => $dbImage, 'atributos' => $atributos, 'opciones' => $opciones, 'categoria' => $categoria, 'precio' => $precio, 'descuento' => $descuento, 'stock' => $stock, 'web' => $web, 'fecha' => date("Y-m-d"));
+				$data = array('sku' => $sku, 'producto' => $producto, 'image' => $dbImage, 'atributos' => $atributos, 'opciones' => $opciones, 'categoria' => $categoria, 'precio' => $precio, 'valor' => $valor, 'stock' => $stock, 'web' => $web, 'fecha' => date("Y-m-d"));
 				if ($inventario->guardarProducto($data)) {
 					echo json_encode(array('resultado' => array('mensaje' => 'Producto agregado')));
 				} else {
@@ -160,27 +84,26 @@ class Inventario extends Controller
 	public function editarProducto($request)
 	{
 		$data = $request->getInputs();
-		$image = $data['file'] ?? null;
+		$image = $data['image'] ?? null;
 		$id = $data['ID'] ?? null;
 		$sku = $data['sku'] ?? null;
 		$producto = $data['producto'] ?? null;
 		$atributos = json_encode($data['atributos']) ?? '[]';
 		$opciones = json_encode($data['opciones']) ?? '[]';
-		$categoria = $data['categoria'] ?? null;
+		$categoria = $data['categoria'] ?? '';
 		$precio = $data['precio'] ?? null;
-		$descuento = $data['descuento'] ?? 0;
+		$valor = $data['valor'] ?? null;
 		$web = $data['web'] ?? 'false';
 		$stock = $data['stock'] ?? 'false';
 
 		$post = (isset($id) && !empty($id)) &&
 				(isset($sku) && !empty($sku)) &&
 				(isset($producto) && !empty($producto)) &&
-				(isset($precio) && !empty($precio)) &&
-				(isset($categoria) && !empty($categoria));
+				(isset($precio) && !empty($precio));
 		if ($post) {
 			$inventario = $this->getModel('Inventario');
 			$dbImage = $this->fileFormat($image);
-			$data = array('id' => $id,'sku' => $sku, 'producto' => $producto, 'atributos' => $atributos, 'opciones' => $opciones, 'categoria' => $categoria, 'precio' => $precio, 'descuento' => $descuento, 'stock' => $stock, 'web' => $web);
+			$data = array('id' => $id,'sku' => $sku, 'producto' => $producto, 'atributos' => $atributos, 'opciones' => $opciones, 'categoria' => $categoria, 'precio' => $precio, 'valor' => $valor, 'stock' => $stock, 'web' => $web);
 			if ($image) {
 				$data['image'] = $dbImage;
 			}
@@ -242,43 +165,6 @@ class Inventario extends Controller
 		} else {
 			echo json_encode(array('error' => 'Error al realizar los cambios'));
 		}
-	}
-
-	public function existencia()
-	{
-		$inventario = $this->getModel('Inventario');
-		$lista = Helper::rowImage($inventario->existencia());
-		if (sizeof($lista) < 1) {
-			echo json_encode(array('resultado' => ['error' => 'No hay existencia de productos']));
-		} else {
-			echo json_encode(array('resultado' => ['lista' => $lista]));
-		}
-	}
-
-	public function verExistencia($request)
-	{
-		$req = $request->getAllParams();
-		$inventario = $this->getModel('Inventario');
-		$inventario->setData(array('id' => $req->id));
-		$existencia = $inventario->verExistencia();
-		if (sizeof($existencia) > 0) {
-			echo json_encode(array('resultado' => array('lista' => $existencia[0])));
-		} else {
-			echo json_encode(array('resultado' => array('error' => 'no existe')));
-		}
-	}
-
-	private function _checkDuplicateOpcion($arr)
-	{
-		$checkList = array();
-		$listRepeat = array();
-		foreach ($arr as $keys) {
-			if (in_array($keys, $checkList)) {
-				$listRepeat[] = $keys;
-			}
-			$checkList[] = $keys;
-		}
-		return $listRepeat;
 	}
 
 	public function buscarInventario($request)

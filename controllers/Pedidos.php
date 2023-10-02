@@ -68,10 +68,12 @@ class Pedidos extends Controller
             $stock = $list[$item['ID']];
             $opcion = $item['opcion'];
             $cantidad = $item['cantidad'];
-            $precio = $item['precio'];
+            $margen = $item['margen'] ?? 0;
+            $key = array_search($item['ID'], array_column($opciones, 'ID'));
+            $precio = $opciones[$key]['precio'] ?? 0;
             foreach($stock as $n => $value) {
                 if ($value['name']  == $opcion) {
-                    $precio = $value['precio'];
+                    $precio = $value['precio'] == 0 ? $precio : $value['precio'];
                     $disponible = $value['stock'];
                     $enStock = 1;
                     if ($cantidad > $disponible) {
@@ -139,19 +141,13 @@ class Pedidos extends Controller
         $estado = $req->estado;
 
         $inventario = $this->getModel('Inventario');
-
-        if (!empty($medio) || !empty($estado)) {
-            $inventario->setData(array('medio' => $medio, 'estado' => $estado));
-            $resultado = $inventario->filtrarOrden($page ?? 1);
-        } else {
-            $resultado = $inventario->historialPedidos($page ?? 1);
-        }
-        $lista = $resultado['result'];
+        $lista = $inventario->historialPedidos($page ?? 1);
         $status = $inventario->statusPedidos();
-        if (sizeof($lista) < 1) {
-            echo json_encode(array('resultado' => array('error' => 'No se encontraron pedidos')));
+
+        if (sizeof($lista['result']) > 0) {
+            echo json_encode(array('resultado' => array('status' => $status, 'lista' => $lista['result'], 'numeroDePaginas' => $lista['pages'])));
         } else {
-            echo json_encode(array('resultado' => array('status' => $status, 'lista' => $lista, 'numeroDePaginas' => $resultado['pages'])));
+            echo json_encode(array('resultado' => array('error' => 'No se encontraron pedidos')));
         }
     }
 
@@ -358,22 +354,6 @@ class Pedidos extends Controller
         }
     }
 
-    public function listaRetiro($request)
-    {
-        $req = $request->getAllParams();
-        $page = $req->page ?? 1;
-        $usuario = $this->getModel('Usuario');
-        $inventario = $this->getModel('Inventario');
-        $resultado = $inventario->pedidosCompletados($page);
-        $lista = Helper::rowImage($resultado['result']);
-        $proveedores = $usuario->todosProveedores();
-        if (sizeof($lista) < 1) {
-            echo json_encode(array('resultado' => array('error' => 'No hay pedidos para retiro', 'proveedores' => $proveedores)));
-        } else {
-            echo json_encode(array('resultado' => array('proveedores' => $proveedores, 'lista' => $lista, 'numeroDePaginas' => $resultado['pages'])));
-        }
-    }
-
     public function buscarOrden($request)
     {
         $req = $request->getAllParams();
@@ -387,27 +367,6 @@ class Pedidos extends Controller
             }
         }
         echo json_encode(array('resultado' => array('error' => 'No se encontraron resultados')));
-    }
-
-    public function retirarProducto($request)
-    {
-        $req = $request->getInputs();
-        $ids = $req['id'] ?? array();
-        $proveedor = $req['proveedor'] ?? 0;
-        if (sizeof($ids) > 0) {
-            if ($proveedor) {
-                $inventario = $this->getModel('Inventario')->setData(array('id' => $ids, 'proveedor' => $proveedor));
-                if ($inventario->retirarProducto()) {
-                    echo json_encode(array('resultado' => array('mensaje' => 'Retiros realizados')));
-                }else {
-                    echo json_encode(array('resultado' => array('error' => 'Hubo un error')));
-                }
-            }else {
-                echo json_encode(array('resultado' => array('error' => 'Sin seleccionar proveedor')));
-            }
-        }else {
-            echo json_encode(array('resultado' => array('error' => 'No hay productos seleccionados')));
-        }
     }
 
     public function test()

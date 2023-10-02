@@ -14,16 +14,11 @@ class Inventario extends Model
     {
         $this->token = Helper::getAuthorization();
     }
+
     public function buscarProducto()
     {
         $id = $this->getData('id');
-        return self::getResult("SELECT p.ID, p.sku, p.producto, p.stock, p.web, p.atributos, p.opciones, p.categoria, p.image, p.precio, p.descuento FROM productos AS p WHERE p.usuario = '{$this->token}' AND p.ID = '{$id}' LIMIT 1");
-    }
-
-    public function buscarSku()
-    {
-        $id = urldecode($this->getData('id'));
-        return self::getResult("SELECT p.sku, p.producto, p.image, (CASE p.descuento WHEN 0 THEN p.precio ELSE p.precio * (1 - p.descuento / 100) END) AS precio, (CASE p.descuento WHEN 0 THEN p.precio ELSE p.precio * (1 - p.descuento / 100) END) AS precioreal, p.descuento, '' AS opciones, '' AS opcion, p.opciones AS options, 1 AS cantidad, '' AS nota, p.atributos FROM productos AS p WHERE p.sku = '{$id}' AND p.usuario = '{$this->token}' LIMIT 1");
+        return self::getResult("SELECT p.ID, p.sku, p.producto, p.stock, p.web, p.atributos, p.opciones, p.categoria, p.image, p.precio, p.valor FROM productos AS p WHERE p.usuario = '{$this->token}' AND p.ID = '{$id}' LIMIT 1");
     }
 
     public function borrarProducto()
@@ -45,25 +40,15 @@ class Inventario extends Model
         return $this->Insert('productos', $data);
     }
 
-    public function importarProductos($data)
+    public function listaProducto($page = 1, $rows = 14)
     {
-        return self::Insert('productos', $data, 'REPLACE');
-    }
-
-    public function listaProducto($page = 1, $rows = 20)
-    {
-        return self::queryPaginate("SELECT ID, sku, image, producto, categoria, atributos, opciones, precio, descuento, web, 1 AS cantidad, '' AS opcion, '' AS nota FROM (SELECT * FROM productos WHERE usuario = '{$this->token}' UNION ALL SELECT pr.* FROM subs s INNER JOIN productos pr ON (s.producto_id = pr.ID) WHERE s.usuario = '{$this->token}' AND pr.web = 'true') productos", $page, $rows);
+        return self::queryPaginate("SELECT ID, sku, image, producto, categoria, atributos, opciones, precio, valor, web FROM (SELECT ID, sku, image, producto, categoria, atributos, opciones, precio, valor, web FROM productos WHERE usuario = '{$this->token}' UNION ALL SELECT pr.ID, pr.sku, pr.image, pr.producto, pr.categoria, pr.atributos, pr.opciones, pr.precio, pr.valor, pr.web FROM subs s INNER JOIN productos pr ON (s.producto_id = pr.ID) WHERE s.usuario = '{$this->token}' AND pr.web = 'true') productos", $page, $rows);
     }
 
     public function buscadorProducto($page, $rows = 20)
     {
         $busqueda = urldecode($this->getData('buscar'));
         return self::queryPaginate("SELECT * FROM productos WHERE usuario = '{$this->token}' AND (producto LIKE '%{$busqueda}%' OR sku LIKE '%{$busqueda}%' OR sku = '{$busqueda}')", $page, $rows);
-    }
-
-    public function existencia()
-    {
-        return self::getResult("SELECT * FROM productos AS p WHERE p.usuario = '{$this->token}' AND opciones != '[]' ORDER BY id ASC");
     }
 
     public function obtenerOpciones($sku)
@@ -73,14 +58,14 @@ class Inventario extends Model
             $in[] = "('{$id}')";
         }
         $in = array_unique($in);
-        $sql = "SELECT ID, sku, opciones FROM productos WHERE ID IN (".implode(", ", $in).")";
+        $sql = "SELECT ID, precio, sku, opciones FROM productos WHERE ID IN (".implode(", ", $in).")";
         return self::getResult($sql);
     }
 
     public function hacerPedido($data, $restante)
     {
         $fecha = date("Y-m-d");
-        $sql = "INSERT INTO pedidos (id_producto, sku, producto, precio, descuento, opcion, cantidad, nota, existe, empresa, pago, npedido, fecha, order_id, serial, rut, estado, usuario, proveedor)";
+        $sql = "INSERT INTO pedidos (id_producto, sku, producto, precio, ganas, opcion, cantidad, nota, existe, empresa, pago, npedido, fecha, order_id, serial, rut, estado, usuario, proveedor)";
 
         $keys_id = array_keys($restante);
         $updateStock = "UPDATE productos SET opciones = (CASE ";
@@ -92,7 +77,7 @@ class Inventario extends Model
         $sql_values = array();
         foreach ($data as $key => $item) {
             $precio = $item['precio'] ?? 'precio';
-            $sql_values[] = " SELECT '{$item['ID']}', '{$item['sku']}', '{$item['producto']}', {$precio}, descuento, '{$item['opciones']}', '{$item['cantidad']}', '{$item['nota']}', '{$item['existe']}', '{$item['empresa']}', '{$item['pago']}', '{$item['npedido']}', '{$fecha}', '{$item['order_id']}', '{$item['serial']}', '{$item['rut']}', '{$item['estado']}', '{$this->token}', proveedor FROM productos WHERE ID = '{$item['ID']}'";
+            $sql_values[] = " SELECT ID, '{$item['sku']}', '{$item['producto']}', {$precio}, {$precio} * valor / 100, '{$item['opciones']}', '{$item['cantidad']}', '{$item['nota']}', '{$item['existe']}', '{$item['empresa']}', '{$item['pago']}', '{$item['npedido']}', '{$fecha}', '{$item['order_id']}', '{$item['serial']}', '{$item['rut']}', '{$item['estado']}', '{$this->token}', proveedor FROM productos WHERE ID = '{$item['ID']}'";
         }
 
         $sql .= implode(" UNION ", $sql_values); //insertar ventas pedido
@@ -163,7 +148,7 @@ class Inventario extends Model
         return self::getResult("SELECT lista.estado, IF(T1.total, T1.total, 0) AS total FROM
 		(SELECT 1 as idEstado , 'En espera' as estado UNION
 		SELECT 2 as idEstado , 'Completados' as estado UNION
-        SELECT 3 as idEstado , 'Enviados' as estado) lista
+        SELECT 3 AS idEstado, 'Enviado' as estado) lista
 		LEFT JOIN (SELECT estado, COUNT(ID) total FROM pedidos WHERE usuario = '{$this->token}' OR proveedor = '$this->token' GROUP BY estado) T1 ON T1.estado = lista.idEstado");
     }
 
@@ -172,20 +157,10 @@ class Inventario extends Model
         return self::queryPaginate("SELECT p.ID, p.empresa, p.npedido, p.fecha, p.order_id, c.nombre, SUM(p.precio * p.cantidad) AS total, SUM(p.cantidad) AS cantidad, SUM(cp.terminado) AS terminado, u.nombre AS vendedor FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.ID AND pr.usuario = '{$this->token}') LEFT JOIN control_pedido AS cp ON (cp.id_pedido = p.ID) LEFT JOIN clientes AS c ON (p.rut = c.ID AND c.usuario = p.usuario) LEFT JOIN usuarios AS u ON (p.usuario = u.ID) WHERE p.usuario = '{$this->token}' OR p.proveedor = '{$this->token}' GROUP BY p.order_id ORDER BY p.ID DESC", $page, $rows);
     }
 
-    public function filtrarOrden($page = 1, $rows = 20)
-    {
-        $medio = $this->getData('medio');
-        $estado = $this->getData('estado');
-        (empty($medio)) ? null : $where[] = "p.medio = '{$medio}'";
-        (empty($estado)) ? null : $where[] = " p.estado = '{$estado}'";
-        $w = implode("AND", $where);
-        return self::queryPaginate("SELECT p.*, pr.image, c.nombre, SUM(p.precio) AS total, SUM(p.valor) AS cantidad FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.usuario = '{$this->token}') LEFT JOIN clientes AS c ON (p.rut = c.rut AND c.usuario = p.usuario) WHERE p.usuario = '{$this->token}' AND {$w} GROUP BY p.npedido ORDER BY p.ID DESC", $page, $rows);
-    }
-
     public function orden()
     {
         $id = $this->getData('id');
-        return self::getResult("SELECT p.npedido, p.producto, p.precio, p.cantidad, p.opcion, p.empresa, p.pago, p.sku, pr.image, pr.atributos, c.nombre, c.phone, c.email, c.direccion, 0 AS total, p.cantidad FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.ID) LEFT JOIN clientes AS c ON (p.rut = c.ID) WHERE p.order_id = '{$id}' AND (p.usuario = '{$this->token}' OR p.proveedor = '{$this->token}') ORDER BY p.npedido ASC");
+        return self::getResult("SELECT p.npedido, p.producto, p.precio AS precio, p.cantidad, p.opcion, p.empresa, p.pago, p.sku, pr.image, pr.atributos, c.nombre, c.phone, c.email, c.direccion, 0 AS total, p.cantidad FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.ID) LEFT JOIN clientes AS c ON (p.rut = c.ID) WHERE p.order_id = '{$id}' AND (p.usuario = '{$this->token}' OR p.proveedor = '{$this->token}') ORDER BY p.npedido ASC");
     }
 
     public function ordenDetalles()
@@ -197,7 +172,7 @@ class Inventario extends Model
     public function ordenProductos()
     {
         $id = $this->getData('id');
-        return self::getResult("SELECT p.producto, p.id_producto, p.precio, p.opcion, p.valor, pr.image, c.nombre, p.rut, p.empresa, p.pago, pr.atributos, o.opcion AS options FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.usuario = '{$this->token}') LEFT JOIN opciones AS o ON (o.usuario = '{$this->token}') LEFT JOIN clientes AS c ON (p.rut = c.rut AND c.usuario = '{$this->token}') WHERE p.npedido = '{$id}' AND p.usuario = '{$this->token}'");
+        return self::getResult("SELECT p.producto, p.id_producto, p.precio, p.opcion, pr.image, c.nombre, p.rut, p.empresa, p.pago, pr.atributos, o.opcion AS options FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.usuario = '{$this->token}') LEFT JOIN opciones AS o ON (o.usuario = '{$this->token}') LEFT JOIN clientes AS c ON (p.rut = c.rut AND c.usuario = '{$this->token}') WHERE p.npedido = '{$id}' AND p.usuario = '{$this->token}'");
     }
 
     public function ultimaOrden()
@@ -212,7 +187,7 @@ class Inventario extends Model
     public function informeSolicitado($data = array())
     {
         $ids = implode(",", $data);
-        return self::getResult("SELECT p.ID, p.id_producto, p.producto, p.opcion, p.valor, p.npedido, pr.image, pr.atributos FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.usuario = '{$this->token}') WHERE p.ID IN({$ids})");
+        return self::getResult("SELECT p.ID, p.id_producto, p.producto, p.opcion, p.npedido, pr.image, pr.atributos FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.usuario = '{$this->token}') WHERE p.ID IN({$ids})");
     }
 
     public function pedidoCompletado()
@@ -227,11 +202,6 @@ class Inventario extends Model
         return self::Insert("despacho", $data);
     }
 
-    public function pedidosCompletados($page = 1, $rows = 20)
-    {
-        return self::queryPaginate("SELECT p.ID, p.id_producto, p.producto, p.precio, p.opcion, p.cantidad, p.npedido, p.estado, pr.image, pr.sku FROM pedidos AS p LEFT JOIN productos AS pr ON (p.id_producto = pr.ID) WHERE p.estado = 2 AND p.proveedor = '{$this->token}' ORDER BY p.ID ASC", $page, $rows);
-    }
-
     public function opciones()
     {
     	return self::getResult("SELECT opcion FROM opciones WHERE usuario = '$this->token'");
@@ -240,7 +210,7 @@ class Inventario extends Model
     public function formularioBusqueda()
     {
         $s = $this->getData("busqueda");
-        $q = "SELECT p.ID, p.sku, p.image, p.producto, p.categoria, p.atributos, p.precio, p.descuento, CASE WHEN u.nombre IS NULL THEN 'Sin proveedor' ELSE u.nombre END AS proveedor FROM productos AS p LEFT JOIN usuarios AS u ON (p.proveedor = u.ID) WHERE (p.producto LIKE '%{$s}%' OR p.sku = '{$s}') AND p.usuario = '{$this->token}'";
+        $q = "SELECT ID, sku, image, producto, categoria, atributos, opciones, precio, valor, web FROM (SELECT ID, sku, image, producto, categoria, atributos, opciones, precio, valor, web FROM productos WHERE usuario = '{$this->token}' UNION ALL SELECT pr.ID, pr.sku, pr.image, pr.producto, pr.categoria, pr.atributos, pr.opciones, pr.precio, pr.valor, pr.web FROM subs s INNER JOIN productos pr ON (s.producto_id = pr.ID) WHERE s.usuario = '{$this->token}' AND pr.web = 'true') productos WHERE sku = '{$s}' OR producto LIKE '%{$s}%'";
         return self::getResult($q);
     }
 
@@ -248,32 +218,6 @@ class Inventario extends Model
         $s = $this->getData('busqueda');
         $q = "SELECT s.ID, p.npedido, p.producto, p.precio, p.opcion, p.cantidad, pr.atributos, pr.image, p.id_producto, c.nombre, s.fecha, s.estado, s.id_pedido FROM solicitar AS s LEFT JOIN pedidos AS p ON (s.id_pedido = p.ID) LEFT JOIN productos AS pr ON (p.id_producto = pr.sku AND pr.proveedor = '{$this->token}' AND s.usuario = pr.usuario) LEFT JOIN usuarios AS c ON (pr.proveedor = c.ID) WHERE p.npedido = '{$s}' AND pr.proveedor = '{$this->token}' ORDER BY s.estado ASC, p.npedido ASC";
         return self::getResult($q);
-    }
-
-    public function retirarProducto()
-    {
-        $ids = $this->getData('id');
-        $proveedor = $this->getData('proveedor');
-        $code = Helper::getRandomString(9);
-        $data = array_map(function($id) use ($proveedor, $code) {
-            return array('id_pedido' => $id, 'proveedor' => $proveedor, 'fecha' => date("Y-m-d H:i:s"), 'code' => $code, 'usuario' => $this->token);
-        }, $ids);
-        return self::Insert('retiros', $data);
-    }
-
-    public function listaRetiros()
-    {
-        return self::getResult("SELECT p.npedido, p.empresa, r.fecha, c.nombre FROM retiros AS r LEFT JOIN pedidos AS p ON (r.id_pedido = p.ID) LEFT JOIN proveedores AS c ON (r.proveedor = c.ID) WHERE r.usuario = '{$this->token}' GROUP BY r.code");
-    }
-
-    public function downloadRetiro()
-    {
-        $retiros = self::getResult("SELECT p.npedido, pr.image, p.sku, p.producto, p.precio, p.cantidad, p.empresa, c.nombre, c.rut, c.phone, c.email, c.direccion FROM retiros AS r LEFT JOIN pedidos AS p ON (r.id_pedido = p.ID) LEFT JOIN productos AS pr ON (p.id_producto = pr.ID) LEFT JOIN clientes AS c ON (p.rut = c.ID) WHERE r.usuario = '{$this->token}'");
-        $res = array();
-        foreach ($retiros as $key => $value) {
-            $res[$value['npedido']][] = $value;
-        }
-        return $res;
     }
 
     public function importMarketplace()
@@ -304,5 +248,10 @@ class Inventario extends Model
         SELECT 12 as IdMes, 'Diciembre'  as Mes) TMeses
         LEFT JOIN (SELECT MONTH(fecha) Mes, SUM(cantidad) total_mes FROM pedidos WHERE YEAR(fecha) = '{$fecha}' AND proveedor = '{$this->token}' GROUP BY Mes) T1 ON T1.Mes = TMeses.idMes";
         return self::getResult($q);
+    }
+
+    public function gananciaspromedio()
+    {
+        return self::getResult("SELECT SUM(total) AS total FROM (SELECT SUM(precio * cantidad) AS total, proveedor FROM pedidos WHERE proveedor = '{$this->token}' AND usuario = '{$this->token}' UNION ALL SELECT SUM(ganas*cantidad) AS total, proveedor FROM pedidos WHERE proveedor = '{$this->token}' AND usuario <> '{$this->token}' UNION ALL SELECT SUM(precio * cantidad) / COUNT(ID) AS total, 0 AS proveedor FROM pedidos WHERE proveedor = '{$this->token}' GROUP BY proveedor) totales WHERE totales.proveedor IS NOT NULL GROUP BY totales.proveedor");
     }
 }

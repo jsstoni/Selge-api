@@ -10,9 +10,11 @@ class Marketplace extends Controller
 	public function index($request)
 	{
 		$inventario = $this->getModel('Marketplace');
-		$productos = $inventario->dropshipping();
-		if (sizeof($productos) > 0) {
-			echo json_encode(array('resultado' => array('lista' => Helper::rowImage($productos))));
+		$req = $request->getAllParams();
+		$page = $req->page ?? 1;
+		$productos = $inventario->dropshipping($page, 16);
+		if (sizeof($productos['result']) > 0) {
+			echo json_encode(array('resultado' => array('lista' => Helper::rowImage($productos['result']))));
 			return;
 		}
 		echo json_encode(array('resultado' => array('error' => 'No se encontraron resultados')));

@@ -10,8 +10,8 @@ class Marketplace extends Model
     {
         $this->token = Helper::getAuthorization();
     }
-	public function dropshipping()
+	public function dropshipping($page = 1, $row = 16)
     {
-        return self::getResult("SELECT p.ID, p.sku, p.image, p.producto, p.atributos, p.opciones, p.precio, u.nombre AS proveedor FROM productos AS p LEFT JOIN usuarios AS u ON (p.proveedor = u.ID) WHERE p.web = 'true' AND proveedor <> '{$this->token}'");
+        return self::queryPaginate("SELECT p.ID, p.sku, p.image, p.producto, p.atributos, p.opciones, p.precio, p.valor, u.nombre AS proveedor FROM productos AS p LEFT JOIN usuarios AS u ON (p.proveedor = u.ID) WHERE p.web = 'true' AND proveedor <> '{$this->token}'", $page, $row);
     }
 }

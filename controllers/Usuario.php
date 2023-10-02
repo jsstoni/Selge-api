@@ -170,7 +170,7 @@ class Usuario extends Controller
 
     public function login($request)
     {
-        $data = $request->getInputs();
+        $data = $request->post;
         $user = $data['usuario'];
         $pass = $data['password'];
         $usuarios = $this->getModel('Usuario');
